@@ -40,6 +40,13 @@ pipeline {
       }
     }
 
+    // FIXED: Added the missing build step to compile the Java .jar file
+    stage('Build Application') {
+      steps {
+        sh 'cd spring-boot-app && mvn clean package'
+      }
+    }
+
     stage('Build and Push Docker Image') {
       steps {
         script {
