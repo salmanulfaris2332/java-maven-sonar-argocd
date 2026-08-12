@@ -5,83 +5,73 @@ pipeline {
       args '--user root -v /var/run/docker.sock:/var/run/docker.sock'
     }
   }
-
   environment {
-    DOCKER_IMAGE = "salmanulfaris2395/spring-boot-app"
-    GIT_REPO_NAME = "java-maven-sonar-argocd"
-    GIT_USER_NAME = "salmanulfaris2332"
+    DOCKER_IMAGE   = "salmanulfaris2395/spring-boot-app"
+    GIT_REPO_NAME  = "java-maven-sonar-argocd"
+    GIT_USER_NAME  = "salmanulfaris2332"
+    APP_DIR        = "spring-boot-app"
   }
-
   options {
     timeout(time: 30, unit: 'MINUTES')
     buildDiscarder(logRotator(numToKeepStr: '10'))
   }
-
   stages {
-
     stage('Checkout') {
       steps {
         sh 'echo "Checkout successful"'
         sh 'ls -ltr'
       }
     }
-
-    stage('SonarQube Analysis') {
+    stage('Build and Test') {
       steps {
-        withCredentials([string(credentialsId: 'sonarqube', variable: 'SONAR_AUTH_TOKEN')]) {
-          sh '''
-            cd spring-boot-app && mvn org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
-              -Dsonar.login=$SONAR_AUTH_TOKEN \
-              -Dsonar.host.url=http://13.204.83.62:9000 \
-              -Dsonar.projectKey=springboot-app-test \
-              -Dsonar.projectName='springboot-app-test-website'
-          '''
+        dir("${APP_DIR}") {
+          sh 'mvn clean package'
         }
       }
     }
-
-    // FIXED: Added the missing build step to compile the Java .jar file
-    stage('Build Application') {
-      steps {
-        sh 'cd spring-boot-app && mvn clean package'
+    stage('SonarQube Analysis') {
+  steps {
+    dir("${APP_DIR}") {
+      withSonarQubeEnv('sonarqube') {
+        sh '''
+          mvn org.sonarsource.scanner.maven:sonar-maven-plugin:3.9.1.2184:sonar \
+            -Dsonar.projectKey=spring-boot-app \
+            -Dsonar.projectName='Spring Boot App'
+        '''
       }
     }
-
+  }
+}
     stage('Build and Push Docker Image') {
       steps {
-        script {
-          sh "cd spring-boot-app && docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} ."
-
-          def dockerImage = docker.image("${DOCKER_IMAGE}:${BUILD_NUMBER}")
-
-          docker.withRegistry('https://index.docker.io/v1/', 'docker-cred') {
-            dockerImage.push()
-            dockerImage.push('latest')
+        dir("${APP_DIR}") {
+          script {
+            sh 'docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} .'
+            def dockerImage = docker.image("${DOCKER_IMAGE}:${BUILD_NUMBER}")
+            docker.withRegistry('https://index.docker.io/v1/', 'docker-cred') {
+              dockerImage.push()
+              dockerImage.push('latest')
+            }
           }
         }
       }
     }
-
     stage('Update Deployment File') {
-      steps {
-        withCredentials([string(credentialsId: 'github', variable: 'GITHUB_TOKEN')]) {
-          sh '''
-            git config user.email "sidharthshai98@gmail.com"
-            git config user.name "${GIT_USER_NAME}"
-
-            sed -i "s|image: .*|image: ${DOCKER_IMAGE}:${BUILD_NUMBER}|g" spring-boot-app-manifests/deployment.yml
-
-            git add spring-boot-app-manifests/deployment.yml
-
-            git commit -m "Update static website image to ${BUILD_NUMBER} [skip ci]" || echo "No changes to commit"
-
-            git push https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git HEAD:main
-          '''
-        }
-      }
+  steps {
+    withCredentials([string(credentialsId: 'github', variable: 'GITHUB_TOKEN')]) {
+      sh '''
+        git config --global --add safe.directory "$WORKSPACE"
+        git config user.email "salmanulfaris2332@gmail.com"
+        git config user.name "${GIT_USER_NAME}"
+        sed -i "s|image: .*|image: ${DOCKER_IMAGE}:${BUILD_NUMBER}|g" spring-boot-app-manifests/deployment.yml
+        git add spring-boot-app-manifests/deployment.yml
+        git commit -m "Update spring-boot app image to ${BUILD_NUMBER} [skip ci]" || echo "No changes to commit"
+        git push https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git HEAD:main
+      '''
     }
   }
-
+}
+  }
   post {
     always {
       cleanWs()
