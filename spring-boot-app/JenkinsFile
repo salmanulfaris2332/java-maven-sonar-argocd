@@ -22,7 +22,6 @@ pipeline {
         sh 'ls -ltr'
       }
     }
-
     stage('Build and Test') {
       steps {
         dir("${APP_DIR}") {
@@ -30,21 +29,19 @@ pipeline {
         }
       }
     }
-
     stage('SonarQube Analysis') {
-      steps {
-        dir("${APP_DIR}") {
-          withSonarQubeEnv('sonarqube') {
-            sh '''
-              mvn org.sonarsource.scanner.maven:sonar-maven-plugin:3.9.1.2184:sonar \
-                -Dsonar.projectKey=spring-boot-app \
-                -Dsonar.projectName='Spring Boot App'
-            '''
-          }
-        }
+  steps {
+    dir("${APP_DIR}") {
+      withSonarQubeEnv('sonarqube') {
+        sh '''
+          mvn org.sonarsource.scanner.maven:sonar-maven-plugin:3.9.1.2184:sonar \
+            -Dsonar.projectKey=spring-boot-app \
+            -Dsonar.projectName='Spring Boot App'
+        '''
       }
     }
-
+  }
+}
     stage('Build and Push Docker Image') {
       steps {
         dir("${APP_DIR}") {
@@ -59,24 +56,22 @@ pipeline {
         }
       }
     }
-
     stage('Update Deployment File') {
-      steps {
-        withCredentials([string(credentialsId: 'github', variable: 'GITHUB_TOKEN')]) {
-          sh '''
-            git config --global --add safe.directory "$WORKSPACE"
-            git config user.email "salmanulfaris2332@gmail.com"
-            git config user.name "${GIT_USER_NAME}"
-            sed -i "s|image: .*|image: ${DOCKER_IMAGE}:${BUILD_NUMBER}|g" spring-boot-app-manifests/deployment.yml
-            git add spring-boot-app-manifests/deployment.yml
-            git commit -m "Update spring-boot app image to ${BUILD_NUMBER} [skip ci]" || echo "No changes to commit"
-            git push https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git HEAD:main
-          '''
-        }
-      }
+  steps {
+    withCredentials([string(credentialsId: 'github', variable: 'GITHUB_TOKEN')]) {
+      sh '''
+        git config --global --add safe.directory "$WORKSPACE"
+        git config user.email "salmanulfaris2332@gmail.com"
+        git config user.name "${GIT_USER_NAME}"
+        sed -i "s|image: .*|image: ${DOCKER_IMAGE}:${BUILD_NUMBER}|g" spring-boot-app-manifests/deployment.yml
+        git add spring-boot-app-manifests/deployment.yml
+        git commit -m "Update spring-boot app image to ${BUILD_NUMBER} [skip ci]" || echo "No changes to commit"
+        git push https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git HEAD:main
+      '''
     }
   }
-
+}
+  }
   post {
     always {
       cleanWs()
